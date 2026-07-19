@@ -1,9 +1,20 @@
 require("dotenv").config();
+const http = require("http");
 const { Client, GatewayIntentBits, Collection } = require("discord.js");
 const { loadCommands } = require("./handlers/commandHandler");
 const { loadEvents } = require("./handlers/eventHandler");
 const { connectDB, disconnectDB } = require("./db/prisma");
 const logger = require("./utils/logger");
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Bot is running");
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  logger.info("Bot", `Serveur HTTP sur le port ${PORT}`);
+});
 
 const client = new Client({
   intents: [
