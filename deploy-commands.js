@@ -29,6 +29,17 @@ async function deploy() {
   try {
     console.log(`Déploiement de ${commands.length} slash commands...`);
 
+    const existing = await rest.get(Routes.applicationCommands(process.env.CLIENT_ID));
+    const existingNames = new Set(existing.map((c) => c.name));
+    const newNames = new Set(commands.map((c) => c.name));
+
+    for (const old of existing) {
+      if (!newNames.has(old.name)) {
+        console.log(`Suppression de l'ancienne commande /${old.name}...`);
+        await rest.delete(Routes.applicationCommand(process.env.CLIENT_ID, old.id));
+      }
+    }
+
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
       body: commands,
     });
