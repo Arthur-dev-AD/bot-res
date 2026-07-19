@@ -543,3 +543,4 @@ async function handleStatus(interaction, prisma) {
 }
 
 module.exports.handleAntenneModalSubmit = handleAntenneModalSubmit;
+module.exports.handleAntenneLink = handleAntenneLink;
