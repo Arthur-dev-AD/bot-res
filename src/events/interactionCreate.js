@@ -40,7 +40,7 @@ module.exports = {
         try {
           const { getPrisma } = require("../db/prisma");
           const prisma = getPrisma();
-          const { handleAntenneModalSubmit } = require("../commands/admin/setup");
+          const { handleAntenneModalSubmit } = require("../commands/admin/setup-res");
           await handleAntenneModalSubmit(interaction, prisma);
         } catch (error) {
           console.error("[Modal] Erreur:", error);

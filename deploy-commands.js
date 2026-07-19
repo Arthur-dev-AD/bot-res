@@ -30,7 +30,6 @@ async function deploy() {
     console.log(`Déploiement de ${commands.length} slash commands...`);
 
     const existing = await rest.get(Routes.applicationCommands(process.env.CLIENT_ID));
-    const existingNames = new Set(existing.map((c) => c.name));
     const newNames = new Set(commands.map((c) => c.name));
 
     for (const old of existing) {
