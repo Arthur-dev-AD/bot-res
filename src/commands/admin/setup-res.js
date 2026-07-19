@@ -290,17 +290,18 @@ async function handleAntenneModal(interaction) {
 }
 
 async function handleAntenneModalSubmit(interaction, prisma) {
+  await interaction.deferReply({ ephemeral: true });
+
   const cityId = interaction.fields.getTextInputValue("city_id").trim();
   const city = await prisma.city.findUnique({ where: { id: cityId } });
-  if (!city) return interaction.reply({ content: `❌ Aucune ville trouvée avec l'ID \`${cityId}\`.`, ephemeral: true });
+  if (!city) return interaction.editReply({ content: `❌ Aucune ville trouvée avec l'ID \`${cityId}\`.` });
 
   const channels = interaction.guild.channels.cache.filter((c) => c.type === ChannelType.GuildText).sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ label: c.name, value: c.id }));
-  if (!channels.length) return interaction.reply({ content: "❌ Aucun salon texte disponible.", ephemeral: true });
+  if (!channels.length) return interaction.editReply({ content: "❌ Aucun salon texte disponible." });
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `Lier **${city.name}** à un salon :`,
     components: [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`antlink_${city.id}`).setPlaceholder(`Salon pour ${city.name}`).addOptions(channels.slice(0, 25)))],
-    ephemeral: true,
   });
 }
 
