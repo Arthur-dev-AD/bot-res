@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_DIRECT")
+}
+
+model User {
+  id              String    @id
+  name            String?
+  email           String?   @unique
+  password        String?
+  role            String    @default("AGENT_JUNIOR")
+  status          String    @default("ACTIVE")
+  image           String?
+  discordId       String?   @unique
+  accounts        Account[]
+  sessions        Session[]
+  incidents       Incident[]
+  serviceLogs     ServiceLog[]
+  messagesSent    Message[]           @relation("sentMessages")
+  messagesReceived Message[]          @relation("receivedMessages")
+  onlineStatus    OnlineStatus?
+  ppa             PPA?
+  walletDocuments WalletDocument[]
+  cities          UserCity[]
+  absences        Absence[]
+  blames          Blame[]             @relation("authoredBlames")
+  blamesReceived  Blame[]             @relation("receivedBlames")
+  miseAPiedsReceived MiseAPied[]      @relation("receivedMisesAPied")
+  miseAPiedsAuthored MiseAPied[]      @relation("authoredMisesAPied")
+  ticketsCreated    Ticket[]         @relation("ticketCreator")
+  ticketsClaimed    Ticket[]         @relation("claimedTickets")
+  oauthTokens     OAuthToken[]
+  punishments     Punishment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model City {
+  id                  String         @id @default(cuid())
+  name                String
+  defcon              String         @default("5")
+  webhookMainCourante String?
+  webhookPanic        String?
+  webhookService      String?
+  panicRoleId         String?
+  infoMarkdown        String?
+  channelId           String?
+  categoryId          String?
+  createdBy           String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  userCities  UserCity[]
+  serviceLogs ServiceLog[]
+  incidents   Incident[]
+  floorPlans  FloorPlan[]
+  ppas        PPA[]
+  tickets     Ticket[]
+}
+
+model UserCity {
+  userId String
+  cityId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, cityId])
+  @@index([userId])
+  @@index([cityId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Incident {
+  id          String   @id @default(cuid())
+  agentId     String
+  agentName   String
+  description String
+  location    String?
+  cityId      String?
+  timestamp   DateTime @default(now())
+  images      String?
+
+  agent User  @relation(fields: [agentId], references: [id])
+  city  City? @relation(fields: [cityId], references: [id])
+}
+
+model ServiceLog {
+  id           String      @id @default(cuid())
+  agentId      String
+  agentName    String
+  cityId       String?
+  startTime    DateTime    @default(now())
+  endTime      DateTime?
+  totalPauseMs Int         @default(0)
+  status       String      @default("COMPLETED")
+  actionLogs   ActionLog[]
+
+  agent User  @relation(fields: [agentId], references: [id])
+  city  City? @relation(fields: [cityId], references: [id])
+}
+
+model ActionLog {
+  id           String    @id @default(cuid())
+  agentId      String
+  agentName    String
+  serviceLogId String
+  actionType   String
+  description  String?
+  location     String?
+  details      String?
+  timestamp    DateTime  @default(now())
+
+  serviceLog ServiceLog @relation(fields: [serviceLogId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([serviceLogId])
+  @@index([timestamp])
+}
+
+model Config {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}
+
+model AppSession {
+  id      String   @id @default(cuid())
+  sid     String   @unique
+  data    String
+  expires DateTime
+
+  @@index([expires])
+}
+
+model FloorPlan {
+  id                String   @id @default(cuid())
+  title             String
+  category          String
+  cityId            String?
+  imageUrl          String
+  cloudinaryPublicId String?
+  createdAt         DateTime @default(now())
+
+  city City? @relation(fields: [cityId], references: [id])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  content    String
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("sentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("receivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+}
+
+model PPA {
+  id         String    @id @default(cuid())
+  userId     String    @unique
+  agentName  String
+  cityId     String?
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime?
+  isInfinite Boolean   @default(false)
+  revoked    Boolean   @default(false)
+  revokedAt  DateTime?
+  grantedBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city City? @relation(fields: [cityId], references: [id])
+}
+
+model OnlineStatus {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  isOnline    Boolean   @default(false)
+  lastSeen    DateTime  @default(now())
+  currentPage String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WalletDocument {
+  id                 String   @id @default(cuid())
+  userId             String
+  agentName          String
+  documentType       String
+  label              String
+  imageUrl           String
+  cloudinaryPublicId String?
+  createdAt          DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  author    String
+  title     String
+  content   String
+  rating    Int      @default(5)
+  approved  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OAuthToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  botName   String
+  scopes    String   @default("identify,service")
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Absence {
+  id        String   @id @default(cuid())
+  userId    String
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  isActive  Boolean  @default(true)
+  cancelled Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model Blame {
+  id        String   @id @default(cuid())
+  userId    String
+  authorId  String
+  reason    String
+  severity  String   @default("WARNING")
+  notes     String?
+  createdAt DateTime @default(now())
+
+  user   User @relation("receivedBlames", fields: [userId], references: [id], onDelete: Cascade)
+  author User @relation("authoredBlames", fields: [authorId], references: [id])
+
+  @@index([userId])
+}
+
+model MiseAPied {
+  id        String   @id @default(cuid())
+  userId    String
+  authorId  String
+  reason    String
+  startDate DateTime @default(now())
+  endDate   DateTime
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user   User @relation("receivedMisesAPied", fields: [userId], references: [id], onDelete: Cascade)
+  author User @relation("authoredMisesAPied", fields: [authorId], references: [id])
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model Ticket {
+  id          String   @id @default(cuid())
+  channelId   String   @unique
+  creatorId   String
+  claimedById String?
+  cityId      String?
+  subject     String
+  status      String   @default("OPEN")
+  priority    String   @default("NORMAL")
+  createdAt   DateTime @default(now())
+  closedAt    DateTime?
+
+  creator   User  @relation("ticketCreator", fields: [creatorId], references: [id])
+  claimedBy User? @relation("claimedTickets", fields: [claimedById], references: [id])
+  city      City? @relation(fields: [cityId], references: [id])
+
+  @@index([creatorId])
+  @@index([status])
+}
+
+model Punishment {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  reason    String
+  duration  Int?
+  active    Boolean  @default(true)
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+}
