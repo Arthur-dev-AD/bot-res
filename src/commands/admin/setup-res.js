@@ -22,6 +22,7 @@ const { getConfig, setConfig } = require("../../utils/db");
 const { ROLES } = require("../../config/roles");
 const { DEFCON_LEVELS, getDefconInfo } = require("../../config/defcon");
 const { updateDefconDisplay } = require("../../utils/defconDisplay");
+const { updateServiceCounts } = require("../../events/serviceAnnouncement");
 
 const SETUP_TIMEOUT = 180000;
 
@@ -311,6 +312,7 @@ async function handleAntenneLink(interaction, prisma, cityId) {
   if (!city) return;
   await prisma.city.update({ where: { id: cityId }, data: { channelId } });
   await interaction.update({ content: `✅ **${city.name}** liée à <#${channelId}>`, components: [], embeds: [] });
+  try { await updateServiceCounts(interaction.client); } catch {}
 }
 
 async function handleDefcon(interaction, prisma) {
