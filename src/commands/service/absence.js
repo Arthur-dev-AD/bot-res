@@ -3,6 +3,7 @@ const { getPrisma } = require("../../db/prisma");
 const { getUserByDiscordId, getConfig } = require("../../utils/db");
 const { checkCanPerformAction, successEmbed, errorEmbed, infoEmbed } = require("../../utils/middleware");
 const { formatDiscordTimestamp } = require("../../utils/dates");
+const { getRoleLevel } = require("../../config/roles");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -30,9 +31,23 @@ module.exports = {
             .setDescription("Raison de l'absence")
             .setRequired(false)
         )
+        .addUserOption((opt) =>
+          opt
+            .setName("personne")
+            .setDescription("Définir l'absence de quelqu'un d'autre (Superviseur+)")
+            .setRequired(false)
+        )
     )
     .addSubcommand((sub) =>
-      sub.setName("cancel").setDescription("Annuler ton absence active")
+      sub
+        .setName("cancel")
+        .setDescription("Annuler une absence active")
+        .addUserOption((opt) =>
+          opt
+            .setName("personne")
+            .setDescription("Annuler l'absence de quelqu'un d'autre (Superviseur+)")
+            .setRequired(false)
+        )
     )
     .addSubcommand((sub) =>
       sub
@@ -57,6 +72,27 @@ module.exports = {
       const debutStr = interaction.options.getString("debut");
       const finStr = interaction.options.getString("fin");
       const raison = interaction.options.getString("raison") || "Non précisé";
+      const targetDiscordUser = interaction.options.getUser("personne");
+
+      let targetUser = user;
+      let targetMember = interaction.member;
+
+      if (targetDiscordUser) {
+        if (getRoleLevel(user.role) < getRoleLevel("SUPERVISEUR")) {
+          return interaction.reply({
+            embeds: [errorEmbed("Tu dois être Superviseur ou plus pour gérer les absences des autres.")],
+            ephemeral: true,
+          });
+        }
+        targetUser = await getUserByDiscordId(targetDiscordUser.id);
+        if (!targetUser) {
+          return interaction.reply({
+            embeds: [errorEmbed("Cet utilisateur n'a pas de compte RES Systems lié.")],
+            ephemeral: true,
+          });
+        }
+        targetMember = await interaction.guild.members.fetch(targetDiscordUser.id).catch(() => null);
+      }
 
       const debut = parseDate(debutStr);
       const fin = parseDate(finStr);
@@ -88,7 +124,7 @@ module.exports = {
 
       const existingActive = await prisma.absence.findFirst({
         where: {
-          userId: user.id,
+          userId: targetUser.id,
           isActive: true,
           cancelled: false,
         },
@@ -98,7 +134,9 @@ module.exports = {
         return interaction.reply({
           embeds: [
             errorEmbed(
-              "Tu as déjà une absence active. Annule-la d'abord avec `/absence cancel`."
+              targetDiscordUser
+                ? `${targetUser.name} a déjà une absence active.`
+                : "Tu as déjà une absence active. Annule-la d'abord avec `/absence cancel`."
             ),
           ],
           ephemeral: true,
@@ -108,11 +146,11 @@ module.exports = {
       let removedRoleId = null;
       const absenceRoleId = await getConfig("ABSENCE_ROLE");
 
-      if (absenceRoleId && interaction.member) {
+      if (absenceRoleId && targetMember) {
         try {
           const role = interaction.guild.roles.cache.get(absenceRoleId);
-          if (role && interaction.member.roles.cache.has(absenceRoleId)) {
-            await interaction.member.roles.remove(absenceRoleId);
+          if (role && targetMember.roles.cache.has(absenceRoleId)) {
+            await targetMember.roles.remove(absenceRoleId);
             removedRoleId = absenceRoleId;
           }
         } catch (err) {
@@ -122,7 +160,7 @@ module.exports = {
 
       const absence = await prisma.absence.create({
         data: {
-          userId: user.id,
+          userId: targetUser.id,
           startDate: debut,
           endDate: fin,
           reason: raison,
@@ -131,12 +169,12 @@ module.exports = {
       });
 
       const lines = [
-        `**Agent :** ${user.name}`,
+        `**Agent :** ${targetUser.name}`,
         `**Du :** ${formatDiscordTimestamp(debut, "F")}`,
         `**Au :** ${formatDiscordTimestamp(fin, "F")}`,
         `**Raison :** ${raison}`,
         "",
-        "🔒 Ton compte sera bloqué pendant cette période.",
+        targetDiscordUser ? "🔒 Son compte sera bloqué pendant cette période." : "🔒 Ton compte sera bloqué pendant cette période.",
       ];
 
       if (removedRoleId) {
@@ -148,9 +186,31 @@ module.exports = {
         embeds: [successEmbed("Absence enregistrée", lines.join("\n"))],
       });
     } else if (sub === "cancel") {
+      const targetDiscordUser = interaction.options.getUser("personne");
+
+      let targetUser = user;
+      let targetMember = interaction.member;
+
+      if (targetDiscordUser) {
+        if (getRoleLevel(user.role) < getRoleLevel("SUPERVISEUR")) {
+          return interaction.reply({
+            embeds: [errorEmbed("Tu dois être Superviseur ou plus pour gérer les absences des autres.")],
+            ephemeral: true,
+          });
+        }
+        targetUser = await getUserByDiscordId(targetDiscordUser.id);
+        if (!targetUser) {
+          return interaction.reply({
+            embeds: [errorEmbed("Cet utilisateur n'a pas de compte RES Systems lié.")],
+            ephemeral: true,
+          });
+        }
+        targetMember = await interaction.guild.members.fetch(targetDiscordUser.id).catch(() => null);
+      }
+
       const active = await prisma.absence.findFirst({
         where: {
-          userId: user.id,
+          userId: targetUser.id,
           isActive: true,
           cancelled: false,
         },
@@ -158,7 +218,7 @@ module.exports = {
 
       if (!active) {
         return interaction.reply({
-          embeds: [errorEmbed("Tu n'as pas d'absence active.")],
+          embeds: [errorEmbed(targetDiscordUser ? `${targetUser.name} n'a pas d'absence active.` : "Tu n'as pas d'absence active.")],
           ephemeral: true,
         });
       }
@@ -168,13 +228,13 @@ module.exports = {
         data: { cancelled: true, isActive: false },
       });
 
-      const lines = ["Ton absence a été annulée avec succès."];
+      const lines = [targetDiscordUser ? `L'absence de **${targetUser.name}** a été annulée.` : "Ton absence a été annulée avec succès."];
 
-      if (active.removedRoleId && interaction.member) {
+      if (active.removedRoleId && targetMember) {
         try {
           const role = interaction.guild.roles.cache.get(active.removedRoleId);
           if (role) {
-            await interaction.member.roles.add(active.removedRoleId);
+            await targetMember.roles.add(active.removedRoleId);
             lines.push(`🎭 Rôle **${role.name}** remis.`);
           }
         } catch (err) {
