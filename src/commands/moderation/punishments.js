@@ -75,9 +75,9 @@ module.exports = {
       if (description) description += "\n\n";
       description += "**⚠️ Blames internes**\n";
       description += blames
-        .map((b) => {
+        .map((b, i) => {
           const icon = { INFO: "ℹ️", WARNING: "⚠️", CRITICAL: "🔴" }[b.severity] || "⚠️";
-          return `${icon} **${b.user.name}** | ${b.reason} | Par: ${b.author.name} | ${formatDiscordTimestamp(b.createdAt, "d")}`;
+          return `${icon} **#${i + 1}** ${b.user.name} | ${b.reason} | Par: ${b.author.name} | ${formatDiscordTimestamp(b.createdAt, "d")}`;
         })
         .join("\n");
     }

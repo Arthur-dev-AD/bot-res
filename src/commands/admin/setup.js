@@ -27,7 +27,7 @@ const SETUP_TIMEOUT = 180000;
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("setup")
+    .setName("setup-res")
     .setDescription("Configuration interactive du bot RES Systems")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 

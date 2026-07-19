@@ -2,8 +2,8 @@ const { SlashCommandBuilder } = require("discord.js");
 const { checkDBPermission, successEmbed, errorEmbed, infoEmbed } = require("../../utils/middleware");
 const { PERMISSIONS } = require("../../config/permissions");
 const { getPrisma } = require("../../db/prisma");
-const { getUserByDiscordId, formatDiscordTimestamp } = require("../../utils/db");
-const { parseDuration, formatDuration } = require("../../utils/dates");
+const { getUserByDiscordId } = require("../../utils/db");
+const { parseDuration, formatDuration, formatDiscordTimestamp } = require("../../utils/dates");
 
 module.exports = {
   data: new SlashCommandBuilder()
