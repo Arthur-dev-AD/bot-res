@@ -63,6 +63,8 @@ module.exports = {
         await handleDefcon(i, prisma);
       } else if (id === "setup_tickets") {
         await handleTickets(i, prisma);
+      } else if (id === "setup_absence") {
+        await handleAbsenceConfig(i);
       } else if (id === "setup_status") {
         await handleStatus(i, prisma);
       } else if (id === "setup_back") {
@@ -99,9 +101,12 @@ function buildMainButtons() {
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("setup_defcon").setLabel("DEFCON").setStyle(ButtonStyle.Primary).setEmoji("🔴"),
     new ButtonBuilder().setCustomId("setup_tickets").setLabel("Tickets").setStyle(ButtonStyle.Primary).setEmoji("🎫"),
+    new ButtonBuilder().setCustomId("setup_absence").setLabel("Absence").setStyle(ButtonStyle.Primary).setEmoji("🟢"),
+  );
+  const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("setup_status").setLabel("Status").setStyle(ButtonStyle.Secondary).setEmoji("📊"),
   );
-  return [row1, row2];
+  return [row1, row2, row3];
 }
 
 async function buildMainEmbed(prisma) {
@@ -113,6 +118,7 @@ async function buildMainEmbed(prisma) {
   const ticketsCategoryId = await getConfig("DISCORD_TICKETS_CATEGORY");
   const defconDisplayId = await getConfig("DEFCON_DISPLAY_CHANNEL");
   const ticketPanelId = await getConfig("TICKET_PANEL_CHANNEL");
+  const absenceRoleId = await getConfig("ABSENCE_ROLE");
   const cities = await prisma.city.findMany({ orderBy: { name: "asc" } });
 
   const defconSummary = cities.length > 0
@@ -133,6 +139,7 @@ async function buildMainEmbed(prisma) {
       { name: "🎫 Cat. Tickets", value: ticketsCategoryId ? `<#${ticketsCategoryId}>` : "❌", inline: true },
       { name: "📺 Affichage DEFCON", value: defconDisplayId ? `<#${defconDisplayId}>` : "❌", inline: true },
       { name: "🎫 Panneau Tickets", value: ticketPanelId ? `<#${ticketPanelId}>` : "❌", inline: true },
+      { name: "🟢 Rôle Absence", value: absenceRoleId ? `<@&${absenceRoleId}>` : "❌", inline: true },
       { name: "🔴 DEFCON", value: defconSummary, inline: false },
     )
     .setTimestamp();
@@ -428,6 +435,75 @@ async function handleTicketPanelSet(interaction, prisma, channelId) {
   await interaction.update({ content: `✅ Panneau de tickets envoyé dans ${channel}`, components: [], embeds: [] });
 }
 
+async function handleAbsenceConfig(interaction) {
+  const absenceRoleId = await getConfig("ABSENCE_ROLE");
+
+  const embed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle("Configuration Absence")
+    .setDescription(
+      `Configurez le rôle Discord qui sera **retiré** lors d'une absence et **remis** à la fin.\n\n` +
+      `**Rôle d'absence actuel :** ${absenceRoleId ? `<@&${absenceRoleId}>` : "❌ Non configuré"}`
+    )
+    .setTimestamp();
+
+  await interaction.update({
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("setup_absence_role").setLabel("Choisir le rôle").setStyle(ButtonStyle.Primary).setEmoji("🎭"),
+        new ButtonBuilder().setCustomId("setup_absence_clear").setLabel("Supprimer").setStyle(ButtonStyle.Danger).setEmoji("🗑️"),
+        new ButtonBuilder().setCustomId("setup_back").setLabel("Retour").setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  });
+
+  const c = interaction.message.createMessageComponentCollector({
+    time: SETUP_TIMEOUT,
+    filter: (m) => (m.customId === "setup_absence_role" || m.customId === "setup_absence_clear") && m.user.id === interaction.user.id,
+  });
+
+  c.on("collect", async (i) => {
+    if (i.customId === "setup_absence_clear") {
+      const prisma = getPrisma();
+      await setConfig("ABSENCE_ROLE", "");
+      await handleBack(i, prisma);
+      return;
+    }
+
+    const guild = i.guild;
+    const roles = guild.roles.cache
+      .filter((r) => r.id !== guild.id)
+      .sort((a, b) => b.position - a.position)
+      .map((r) => ({ label: r.name, value: r.id }));
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId("setup_absence_role_pick")
+      .setPlaceholder("Rôle à retirer pendant l'absence")
+      .addOptions(roles.slice(0, 25));
+
+    await i.update({
+      content: "Sélectionnez le rôle à retirer lors d'une absence :",
+      components: [
+        new ActionRowBuilder().addComponents(select),
+        new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("setup_absence").setLabel("Retour").setStyle(ButtonStyle.Secondary)),
+      ],
+      embeds: [],
+    });
+
+    const c2 = i.message.createMessageComponentCollector({
+      time: SETUP_TIMEOUT,
+      filter: (m) => m.customId === "setup_absence_role_pick" && m.user.id === i.user.id,
+    });
+
+    c2.on("collect", async (j) => {
+      const roleId = j.values[0];
+      await setConfig("ABSENCE_ROLE", roleId);
+      await j.update({ content: `✅ Rôle d'absence configuré : <@&${roleId}>`, components: [], embeds: [] });
+    });
+  });
+}
+
 async function handleStatus(interaction, prisma) {
   const allConfigs = await prisma.config.findMany({ where: { key: { startsWith: "DISCORD_ROLE_" } } });
   const roleMap = {};
@@ -437,6 +513,7 @@ async function handleStatus(interaction, prisma) {
   const ticketsCategoryId = await getConfig("DISCORD_TICKETS_CATEGORY");
   const defconDisplayId = await getConfig("DEFCON_DISPLAY_CHANNEL");
   const ticketPanelId = await getConfig("TICKET_PANEL_CHANNEL");
+  const absenceRoleId = await getConfig("ABSENCE_ROLE");
   const cities = await prisma.city.findMany({ orderBy: { name: "asc" } });
 
   const roleFields = Object.values(ROLES).map((r) => ({
@@ -457,6 +534,7 @@ async function handleStatus(interaction, prisma) {
       { name: "Cat. Tickets", value: ticketsCategoryId ? `<#${ticketsCategoryId}>` : "❌", inline: true },
       { name: "Affichage DEFCON", value: defconDisplayId ? `<#${defconDisplayId}>` : "❌", inline: true },
       { name: "Panneau Tickets", value: ticketPanelId ? `<#${ticketPanelId}>` : "❌", inline: true },
+      { name: "Rôle Absence", value: absenceRoleId ? `<@&${absenceRoleId}>` : "❌", inline: true },
     )
     .setTimestamp();
 

@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { getPrisma } = require("../../db/prisma");
-const { getUserByDiscordId } = require("../../utils/db");
-const { checkCanPerformAction, successEmbed, errorEmbed } = require("../../utils/middleware");
+const { getUserByDiscordId, getConfig } = require("../../utils/db");
+const { checkCanPerformAction, successEmbed, errorEmbed, infoEmbed } = require("../../utils/middleware");
 const { formatDiscordTimestamp } = require("../../utils/dates");
 
 module.exports = {
@@ -105,29 +105,47 @@ module.exports = {
         });
       }
 
+      let removedRoleId = null;
+      const absenceRoleId = await getConfig("ABSENCE_ROLE");
+
+      if (absenceRoleId && interaction.member) {
+        try {
+          const role = interaction.guild.roles.cache.get(absenceRoleId);
+          if (role && interaction.member.roles.cache.has(absenceRoleId)) {
+            await interaction.member.roles.remove(absenceRoleId);
+            removedRoleId = absenceRoleId;
+          }
+        } catch (err) {
+          console.error("Erreur lors du retrait du rôle d'absence:", err);
+        }
+      }
+
       const absence = await prisma.absence.create({
         data: {
           userId: user.id,
           startDate: debut,
           endDate: fin,
           reason: raison,
+          removedRoleId,
         },
       });
 
+      const lines = [
+        `**Agent :** ${user.name}`,
+        `**Du :** ${formatDiscordTimestamp(debut, "F")}`,
+        `**Au :** ${formatDiscordTimestamp(fin, "F")}`,
+        `**Raison :** ${raison}`,
+        "",
+        "🔒 Ton compte sera bloqué pendant cette période.",
+      ];
+
+      if (removedRoleId) {
+        const role = interaction.guild.roles.cache.get(removedRoleId);
+        lines.push(`🎭 Rôle **${role ? role.name : "d'absence"}** retiré temporairement.`);
+      }
+
       await interaction.reply({
-        embeds: [
-          successEmbed(
-            "Absence enregistrée",
-            [
-              `**Agent :** ${user.name}`,
-              `**Du :** ${formatDiscordTimestamp(debut, "F")}`,
-              `**Au :** ${formatDiscordTimestamp(fin, "F")}`,
-              `**Raison :** ${raison}`,
-              "",
-              "🔒 Ton compte sera bloqué pendant cette période.",
-            ].join("\n")
-          ),
-        ],
+        embeds: [successEmbed("Absence enregistrée", lines.join("\n"))],
       });
     } else if (sub === "cancel") {
       const active = await prisma.absence.findFirst({
@@ -150,8 +168,23 @@ module.exports = {
         data: { cancelled: true, isActive: false },
       });
 
+      const lines = ["Ton absence a été annulée avec succès."];
+
+      if (active.removedRoleId && interaction.member) {
+        try {
+          const role = interaction.guild.roles.cache.get(active.removedRoleId);
+          if (role) {
+            await interaction.member.roles.add(active.removedRoleId);
+            lines.push(`🎭 Rôle **${role.name}** remis.`);
+          }
+        } catch (err) {
+          console.error("Erreur lors de la remise du rôle d'absence:", err);
+          lines.push("⚠️ Impossible de remettre le rôle automatiquement. Contacte un admin.");
+        }
+      }
+
       await interaction.reply({
-        embeds: [successEmbed("Absence annulée", "Ton absence a été annulée avec succès.")],
+        embeds: [successEmbed("Absence annulée", lines.join("\n"))],
       });
     } else if (sub === "list") {
       const targetMember = interaction.options.getUser("membre");

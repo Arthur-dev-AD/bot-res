@@ -117,6 +117,19 @@ async function setConfig(key, value) {
   });
 }
 
+async function getExpiredAbsences() {
+  const prisma = getPrisma();
+  const now = new Date();
+  return prisma.absence.findMany({
+    where: {
+      isActive: true,
+      cancelled: false,
+      endDate: { lt: now },
+    },
+    include: { user: { select: { id: true, discordId: true, name: true } } },
+  });
+}
+
 module.exports = {
   getUserByDiscordId,
   linkDiscordAccount,
@@ -131,4 +144,5 @@ module.exports = {
   getCityByName,
   getConfig,
   setConfig,
+  getExpiredAbsences,
 };
