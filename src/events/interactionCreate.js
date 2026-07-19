@@ -52,6 +52,20 @@ module.exports = {
           }
         }
       }
+    } else if (interaction.isStringSelectMenu()) {
+      if (interaction.customId.startsWith("antlink_")) {
+        try {
+          const { getPrisma } = require("../db/prisma");
+          const prisma = getPrisma();
+          const { handleAntenneLink } = require("../commands/admin/setup-res");
+          await handleAntenneLink(interaction, prisma, interaction.customId.replace("antlink_", ""));
+        } catch (error) {
+          console.error("[Select] Erreur:", error);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: "Une erreur est survenue.", ephemeral: true });
+          }
+        }
+      }
     } else if (interaction.isButton()) {
       if (interaction.customId.startsWith("ticket_")) {
         try {
