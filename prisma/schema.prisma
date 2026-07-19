@@ -305,14 +305,15 @@ model Blame {
 }
 
 model MiseAPied {
-  id        String   @id @default(cuid())
-  userId    String
-  authorId  String
-  reason    String
-  startDate DateTime @default(now())
-  endDate   DateTime
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  authorId    String
+  reason      String
+  startDate   DateTime @default(now())
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  addedRoleId String?
+  createdAt   DateTime @default(now())
 
   user   User @relation("receivedMisesAPied", fields: [userId], references: [id], onDelete: Cascade)
   author User @relation("authoredMisesAPied", fields: [authorId], references: [id])

@@ -120,6 +120,7 @@ async function buildMainEmbed(prisma) {
   const defconDisplayId = await getConfig("DEFCON_DISPLAY_CHANNEL");
   const ticketPanelId = await getConfig("TICKET_PANEL_CHANNEL");
   const absenceRoleId = await getConfig("ABSENCE_ROLE");
+  const miseRoleId = await getConfig("MISE_A_PIED_ROLE");
   const cities = await prisma.city.findMany({ orderBy: { name: "asc" } });
 
   const defconSummary = cities.length > 0
@@ -141,6 +142,7 @@ async function buildMainEmbed(prisma) {
       { name: "📺 Affichage DEFCON", value: defconDisplayId ? `<#${defconDisplayId}>` : "❌", inline: true },
       { name: "🎫 Panneau Tickets", value: ticketPanelId ? `<#${ticketPanelId}>` : "❌", inline: true },
       { name: "🟢 Rôle Absence", value: absenceRoleId ? `<@&${absenceRoleId}>` : "❌", inline: true },
+      { name: "🔴 Rôle Mise à pied", value: miseRoleId ? `<@&${miseRoleId}>` : "❌", inline: true },
       { name: "🔴 DEFCON", value: defconSummary, inline: false },
     )
     .setTimestamp();
@@ -440,13 +442,14 @@ async function handleTicketPanelSet(interaction, prisma, channelId) {
 
 async function handleAbsenceConfig(interaction) {
   const absenceRoleId = await getConfig("ABSENCE_ROLE");
+  const miseRoleId = await getConfig("MISE_A_PIED_ROLE");
 
   const embed = new EmbedBuilder()
     .setColor(0x2ecc71)
-    .setTitle("Configuration Absence")
+    .setTitle("Configuration Absence & Mise à pied")
     .setDescription(
-      `Configurez le rôle Discord qui sera **retiré** lors d'une absence et **remis** à la fin.\n\n` +
-      `**Rôle d'absence actuel :** ${absenceRoleId ? `<@&${absenceRoleId}>` : "❌ Non configuré"}`
+      `**Rôle d'absence :** ${absenceRoleId ? `<@&${absenceRoleId}>` : "❌"} — retiré lors d'une absence, remis à la fin.\n` +
+      `**Rôle mise à pied :** ${miseRoleId ? `<@&${miseRoleId}>` : "❌"} — attribué lors d'une mise à pied, retiré à la fin.`
     )
     .setTimestamp();
 
@@ -454,8 +457,8 @@ async function handleAbsenceConfig(interaction) {
     embeds: [embed],
     components: [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("setup_absence_role").setLabel("Choisir le rôle").setStyle(ButtonStyle.Primary).setEmoji("🎭"),
-        new ButtonBuilder().setCustomId("setup_absence_clear").setLabel("Supprimer").setStyle(ButtonStyle.Danger).setEmoji("🗑️"),
+        new ButtonBuilder().setCustomId("setup_absence_role").setLabel("Rôle Absence").setStyle(ButtonStyle.Primary).setEmoji("🟢"),
+        new ButtonBuilder().setCustomId("setup_mise_a_pied_role").setLabel("Rôle Mise à pied").setStyle(ButtonStyle.Danger).setEmoji("🔴"),
         new ButtonBuilder().setCustomId("setup_back").setLabel("Retour").setStyle(ButtonStyle.Secondary),
       ),
     ],
@@ -463,16 +466,13 @@ async function handleAbsenceConfig(interaction) {
 
   const c = interaction.message.createMessageComponentCollector({
     time: SETUP_TIMEOUT,
-    filter: (m) => (m.customId === "setup_absence_role" || m.customId === "setup_absence_clear") && m.user.id === interaction.user.id,
+    filter: (m) => (m.customId === "setup_absence_role" || m.customId === "setup_mise_a_pied_role") && m.user.id === interaction.user.id,
   });
 
   c.on("collect", async (i) => {
-    if (i.customId === "setup_absence_clear") {
-      const prisma = getPrisma();
-      await setConfig("ABSENCE_ROLE", "");
-      await handleBack(i, prisma);
-      return;
-    }
+    const configKey = i.customId === "setup_absence_role" ? "ABSENCE_ROLE" : "MISE_A_PIED_ROLE";
+    const placeholder = i.customId === "setup_absence_role" ? "Rôle à retirer pendant l'absence" : "Rôle à attribuer en mise à pied";
+    const label = i.customId === "setup_absence_role" ? "l'absence" : "la mise à pied";
 
     const guild = i.guild;
     const roles = guild.roles.cache
@@ -481,12 +481,12 @@ async function handleAbsenceConfig(interaction) {
       .map((r) => ({ label: r.name, value: r.id }));
 
     const select = new StringSelectMenuBuilder()
-      .setCustomId("setup_absence_role_pick")
-      .setPlaceholder("Rôle à retirer pendant l'absence")
+      .setCustomId(`setup_role_pick_${configKey}`)
+      .setPlaceholder(placeholder)
       .addOptions(roles.slice(0, 25));
 
     await i.update({
-      content: "Sélectionnez le rôle à retirer lors d'une absence :",
+      content: `Sélectionnez le rôle pour ${label} :`,
       components: [
         new ActionRowBuilder().addComponents(select),
         new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("setup_absence").setLabel("Retour").setStyle(ButtonStyle.Secondary)),
@@ -496,13 +496,13 @@ async function handleAbsenceConfig(interaction) {
 
     const c2 = i.message.createMessageComponentCollector({
       time: SETUP_TIMEOUT,
-      filter: (m) => m.customId === "setup_absence_role_pick" && m.user.id === i.user.id,
+      filter: (m) => m.customId === `setup_role_pick_${configKey}` && m.user.id === i.user.id,
     });
 
     c2.on("collect", async (j) => {
       const roleId = j.values[0];
-      await setConfig("ABSENCE_ROLE", roleId);
-      await j.update({ content: `✅ Rôle d'absence configuré : <@&${roleId}>`, components: [], embeds: [] });
+      await setConfig(configKey, roleId);
+      await j.update({ content: `✅ Rôle configuré : <@&${roleId}>`, components: [], embeds: [] });
     });
   });
 }
@@ -517,6 +517,7 @@ async function handleStatus(interaction, prisma) {
   const defconDisplayId = await getConfig("DEFCON_DISPLAY_CHANNEL");
   const ticketPanelId = await getConfig("TICKET_PANEL_CHANNEL");
   const absenceRoleId = await getConfig("ABSENCE_ROLE");
+  const miseRoleId = await getConfig("MISE_A_PIED_ROLE");
   const cities = await prisma.city.findMany({ orderBy: { name: "asc" } });
 
   const roleFields = Object.values(ROLES).map((r) => ({
@@ -538,6 +539,7 @@ async function handleStatus(interaction, prisma) {
       { name: "Affichage DEFCON", value: defconDisplayId ? `<#${defconDisplayId}>` : "❌", inline: true },
       { name: "Panneau Tickets", value: ticketPanelId ? `<#${ticketPanelId}>` : "❌", inline: true },
       { name: "Rôle Absence", value: absenceRoleId ? `<@&${absenceRoleId}>` : "❌", inline: true },
+      { name: "Rôle Mise à pied", value: miseRoleId ? `<@&${miseRoleId}>` : "❌", inline: true },
     )
     .setTimestamp();
 

@@ -130,6 +130,18 @@ async function getExpiredAbsences() {
   });
 }
 
+async function getExpiredMisesAPied() {
+  const prisma = getPrisma();
+  const now = new Date();
+  return prisma.miseAPied.findMany({
+    where: {
+      isActive: true,
+      endDate: { lt: now },
+    },
+    include: { user: { select: { id: true, discordId: true, name: true } } },
+  });
+}
+
 module.exports = {
   getUserByDiscordId,
   linkDiscordAccount,
@@ -145,4 +157,5 @@ module.exports = {
   getConfig,
   setConfig,
   getExpiredAbsences,
+  getExpiredMisesAPied,
 };

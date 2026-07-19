@@ -1,6 +1,7 @@
 const logger = require("../utils/logger");
 const { updateServiceCounts } = require("./serviceAnnouncement");
 const { checkExpiredAbsences } = require("../utils/absenceHandler");
+const { checkExpiredMisesAPied } = require("../utils/miseAPiedHandler");
 
 module.exports = {
   name: "ready",
@@ -28,6 +29,15 @@ module.exports = {
       }
     }, 5000);
 
+    setTimeout(async () => {
+      try {
+        await checkExpiredMisesAPied(client);
+        logger.info("Ready", "Check mises à pied expirées initialisé.");
+      } catch (error) {
+        logger.error("Ready", "Erreur init check mises à pied:", error.message);
+      }
+    }, 5000);
+
     setInterval(async () => {
       try {
         await updateServiceCounts(client);
@@ -41,6 +51,14 @@ module.exports = {
         await checkExpiredAbsences(client);
       } catch (error) {
         logger.error("Ready", "Erreur check absences:", error.message);
+      }
+    }, 60000);
+
+    setInterval(async () => {
+      try {
+        await checkExpiredMisesAPied(client);
+      } catch (error) {
+        logger.error("Ready", "Erreur check mises à pied:", error.message);
       }
     }, 60000);
   },
