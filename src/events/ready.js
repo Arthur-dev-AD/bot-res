@@ -1,6 +1,6 @@
 const logger = require("../utils/logger");
 const { updateServiceCounts } = require("./serviceAnnouncement");
-const { checkExpiredAbsences } = require("../utils/absenceHandler");
+const { checkAbsences } = require("../utils/absenceHandler");
 const { checkExpiredMisesAPied } = require("../utils/miseAPiedHandler");
 
 module.exports = {
@@ -22,8 +22,8 @@ module.exports = {
 
     setTimeout(async () => {
       try {
-        await checkExpiredAbsences(client);
-        logger.info("Ready", "Check absences expirées initialisé.");
+        await checkAbsences(client);
+        logger.info("Ready", "Check absences initialisé.");
       } catch (error) {
         logger.error("Ready", "Erreur init check absences:", error.message);
       }
@@ -48,7 +48,7 @@ module.exports = {
 
     setInterval(async () => {
       try {
-        await checkExpiredAbsences(client);
+        await checkAbsences(client);
       } catch (error) {
         logger.error("Ready", "Erreur check absences:", error.message);
       }

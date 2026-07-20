@@ -145,8 +145,10 @@ module.exports = {
 
       let removedRoleId = null;
       const absenceRoleId = await getConfig("ABSENCE_ROLE");
+      const now = new Date();
+      const startsNow = debut <= now;
 
-      if (absenceRoleId && targetMember) {
+      if (startsNow && absenceRoleId && targetMember) {
         try {
           const role = interaction.guild.roles.cache.get(absenceRoleId);
           if (role && targetMember.roles.cache.has(absenceRoleId)) {
@@ -180,6 +182,8 @@ module.exports = {
       if (removedRoleId) {
         const role = interaction.guild.roles.cache.get(removedRoleId);
         lines.push(`🎭 Rôle **${role ? role.name : "d'absence"}** retiré temporairement.`);
+      } else if (absenceRoleId && !startsNow) {
+        lines.push(`🎭 Rôle d'absence sera retiré automatiquement au début de l'absence.`);
       }
 
       await interaction.reply({
@@ -230,7 +234,7 @@ module.exports = {
 
       const lines = [targetDiscordUser ? `L'absence de **${targetUser.name}** a été annulée.` : "Ton absence a été annulée avec succès."];
 
-      if (active.removedRoleId && targetMember) {
+      if (active.removedRoleId && active.removedRoleId !== "NONE" && targetMember) {
         try {
           const role = interaction.guild.roles.cache.get(active.removedRoleId);
           if (role) {
