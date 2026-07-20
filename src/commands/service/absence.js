@@ -122,21 +122,22 @@ module.exports = {
         });
       }
 
-      const existingActive = await prisma.absence.findFirst({
+      const overlapping = await prisma.absence.findFirst({
         where: {
           userId: targetUser.id,
-          isActive: true,
           cancelled: false,
+          startDate: { lt: fin },
+          endDate: { gt: debut },
         },
       });
 
-      if (existingActive) {
+      if (overlapping) {
         return interaction.reply({
           embeds: [
             errorEmbed(
               targetDiscordUser
-                ? `${targetUser.name} a déjà une absence active.`
-                : "Tu as déjà une absence active. Annule-la d'abord avec `/absence cancel`."
+                ? `${targetUser.name} a déjà une absence qui chevauche cette période (${formatDiscordTimestamp(overlapping.startDate, "d")} → ${formatDiscordTimestamp(overlapping.endDate, "d")}).`
+                : `Tu as déjà une absence qui chevauche cette période (${formatDiscordTimestamp(overlapping.startDate, "d")} → ${formatDiscordTimestamp(overlapping.endDate, "d")}).`
             ),
           ],
           ephemeral: true,
@@ -212,11 +213,13 @@ module.exports = {
         targetMember = await interaction.guild.members.fetch(targetDiscordUser.id).catch(() => null);
       }
 
+      const now = new Date();
       const active = await prisma.absence.findFirst({
         where: {
           userId: targetUser.id,
-          isActive: true,
           cancelled: false,
+          startDate: { lte: now },
+          endDate: { gte: now },
         },
       });
 
@@ -278,13 +281,16 @@ module.exports = {
         });
       }
 
+      const now = new Date();
       const list = absences
         .map((a) => {
           const status = a.cancelled
             ? "❌ Annulée"
-            : a.isActive
+            : a.startDate <= now && a.endDate >= now
             ? "🟢 Active"
-            : "✅ Terminée";
+            : a.endDate < now
+            ? "✅ Terminée"
+            : "⏳ À venir";
           return `${status} | ${formatDiscordTimestamp(a.startDate, "d")} → ${formatDiscordTimestamp(a.endDate, "d")} | ${a.reason || "N/A"}`;
         })
         .join("\n");

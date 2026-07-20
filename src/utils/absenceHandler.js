@@ -7,10 +7,10 @@ async function getStartingAbsences() {
   const now = new Date();
   return prisma.absence.findMany({
     where: {
-      isActive: true,
       cancelled: false,
       removedRoleId: null,
       startDate: { lte: now },
+      endDate: { gte: now },
     },
     include: { user: { select: { id: true, discordId: true, name: true } } },
   });
@@ -21,7 +21,6 @@ async function getExpiredAbsences() {
   const now = new Date();
   return prisma.absence.findMany({
     where: {
-      isActive: true,
       cancelled: false,
       removedRoleId: { not: null },
       endDate: { lt: now },
@@ -67,11 +66,6 @@ async function checkAbsences(client) {
   const expired = await getExpiredAbsences();
 
   for (const absence of expired) {
-    await prisma.absence.update({
-      where: { id: absence.id },
-      data: { isActive: false },
-    });
-
     if (absence.removedRoleId && absence.removedRoleId !== "NONE" && absence.user.discordId) {
       try {
         const guild = client.guilds.cache.first();

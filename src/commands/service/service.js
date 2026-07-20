@@ -35,13 +35,24 @@ module.exports = {
   },
 
   async execute(interaction) {
-    const user = await checkCanPerformAction(interaction);
-    if (!user) return;
-
-    if (await checkNotAbsent(interaction, user) === false) return;
-
     const prisma = getPrisma();
     const sub = interaction.options.getSubcommand();
+
+    let user;
+    if (sub === "start") {
+      user = await getUserByDiscordId(interaction.user.id);
+      if (!user) {
+        await interaction.reply({
+          content: "❌ Compte non trouvé. Utilise `/login` pour connecter ton compte.",
+          ephemeral: true,
+        });
+        return;
+      }
+    } else {
+      user = await checkCanPerformAction(interaction);
+      if (!user) return;
+      if (await checkNotAbsent(interaction, user) === false) return;
+    }
 
     if (sub === "start") {
       const antenneStr = interaction.options.getString("antenne");

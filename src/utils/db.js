@@ -37,7 +37,6 @@ async function isUserAbsent(userId) {
   const absence = await prisma.absence.findFirst({
     where: {
       userId,
-      isActive: true,
       cancelled: false,
       startDate: { lte: now },
       endDate: { gte: now },

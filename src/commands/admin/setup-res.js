@@ -269,7 +269,7 @@ async function handleAntenne(interaction, prisma) {
     .setDescription(
       "Entrez l'**ID de la ville** depuis le site/app desktop pour la lier à un salon Discord.\n\n" +
       (cities.length > 0
-        ? "Antennes :\n" + cities.map((c) => `• **${c.name}** (\`${c.id}\`) — ${c.channelId ? `<#${c.channelId}>` : "❌"}`).join("\n")
+        ? "Antennes :\n" + cities.map((c) => `• **${c.name}** — ${c.channelId ? `<#${c.channelId}>` : "❌"}`).join("\n")
         : "Aucune antenne configurée.")
     );
 

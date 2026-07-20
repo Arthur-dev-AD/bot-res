@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { checkDBPermission, infoEmbed, errorEmbed } = require("../../utils/middleware");
+const { checkDBPermission, checkCanPerformAction, infoEmbed, errorEmbed } = require("../../utils/middleware");
 const { PERMISSIONS } = require("../../config/permissions");
 const { getPrisma } = require("../../db/prisma");
 const { getUserByDiscordId } = require("../../utils/db");
@@ -17,10 +17,16 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const user = await checkDBPermission(interaction, PERMISSIONS.MODERATE_INTERNAL);
-    if (!user) return;
-
     const target = interaction.options.getUser("agent");
+
+    if (target) {
+      const mod = await checkDBPermission(interaction, PERMISSIONS.MODERATE_INTERNAL);
+      if (!mod) return;
+    } else {
+      const user = await checkCanPerformAction(interaction);
+      if (!user) return;
+    }
+
     const prisma = getPrisma();
 
     const where = {};
@@ -33,6 +39,15 @@ module.exports = {
         });
       }
       where.userId = targetUser.id;
+    } else {
+      const self = await getUserByDiscordId(interaction.user.id);
+      if (!self) {
+        return interaction.reply({
+          embeds: [errorEmbed("Compte non trouvé. Utilise `/login` pour connecter ton compte.")],
+          ephemeral: true,
+        });
+      }
+      where.userId = self.id;
     }
 
     const punishments = await prisma.punishment.findMany({
@@ -43,7 +58,7 @@ module.exports = {
     });
 
     const blames = await prisma.blame.findMany({
-      where: target ? { userId: (await getUserByDiscordId(target.id))?.id } : {},
+      where,
       include: {
         user: { select: { name: true } },
         author: { select: { name: true } },
