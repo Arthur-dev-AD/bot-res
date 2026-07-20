@@ -275,7 +275,7 @@ model Absence {
   id            String   @id @default(cuid())
   userId        String
   startDate     DateTime
-  endDate       DateTime
+  endDate       DateTime?
   reason        String?
   isActive      Boolean  @default(true)
   cancelled     Boolean  @default(false)

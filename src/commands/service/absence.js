@@ -1,4 +1,8 @@
-const { SlashCommandBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+} = require("discord.js");
 const { getPrisma } = require("../../db/prisma");
 const { getUserByDiscordId, getConfig } = require("../../utils/db");
 const { checkCanPerformAction, successEmbed, errorEmbed, infoEmbed } = require("../../utils/middleware");
@@ -22,8 +26,8 @@ module.exports = {
         .addStringOption((opt) =>
           opt
             .setName("fin")
-            .setDescription("Date de fin (JJ/MM/AAAA HH:MM)")
-            .setRequired(true)
+            .setDescription("Date de fin (JJ/MM/AAAA HH:MM). Laisse vide pour indéterminé.")
+            .setRequired(false)
         )
         .addStringOption((opt) =>
           opt
@@ -95,9 +99,7 @@ module.exports = {
       }
 
       const debut = parseDate(debutStr);
-      const fin = parseDate(finStr);
-
-      if (!debut || !fin) {
+      if (!debut) {
         return interaction.reply({
           embeds: [
             errorEmbed(
@@ -108,11 +110,29 @@ module.exports = {
         });
       }
 
-      if (fin <= debut) {
-        return interaction.reply({
-          embeds: [errorEmbed("La date de fin doit être après la date de début.")],
-          ephemeral: true,
-        });
+      let fin = null;
+      let isIndetermine = false;
+
+      if (finStr && finStr.trim() !== "") {
+        fin = parseDate(finStr);
+        if (!fin) {
+          return interaction.reply({
+            embeds: [
+              errorEmbed(
+                "Format de date de fin invalide. Utilise **JJ/MM/AAAA HH:MM** (ex: `19/07/2026 14:00`)"
+              ),
+            ],
+            ephemeral: true,
+          });
+        }
+        if (fin <= debut) {
+          return interaction.reply({
+            embeds: [errorEmbed("La date de fin doit être après la date de début.")],
+            ephemeral: true,
+          });
+        }
+      } else {
+        isIndetermine = true;
       }
 
       if (debut < new Date()) {
@@ -122,22 +142,28 @@ module.exports = {
         });
       }
 
+      const maxDate = new Date("9999-12-31T23:59:59");
       const overlapping = await prisma.absence.findFirst({
         where: {
           userId: targetUser.id,
           cancelled: false,
-          startDate: { lt: fin },
-          endDate: { gt: debut },
+          AND: [
+            { startDate: { lt: fin || maxDate } },
+            { OR: [{ endDate: { gt: debut } }, { endDate: null }] },
+          ],
         },
       });
 
       if (overlapping) {
+        const overlapFin = overlapping.endDate
+          ? formatDiscordTimestamp(overlapping.endDate, "d")
+          : "Indéterminé";
         return interaction.reply({
           embeds: [
             errorEmbed(
               targetDiscordUser
-                ? `${targetUser.name} a déjà une absence qui chevauche cette période (${formatDiscordTimestamp(overlapping.startDate, "d")} → ${formatDiscordTimestamp(overlapping.endDate, "d")}).`
-                : `Tu as déjà une absence qui chevauche cette période (${formatDiscordTimestamp(overlapping.startDate, "d")} → ${formatDiscordTimestamp(overlapping.endDate, "d")}).`
+                ? `${targetUser.name} a déjà une absence qui chevauche cette période (${formatDiscordTimestamp(overlapping.startDate, "d")} → ${overlapFin}).`
+                : `Tu as déjà une absence qui chevauche cette période (${formatDiscordTimestamp(overlapping.startDate, "d")} → ${overlapFin}).`
             ),
           ],
           ephemeral: true,
@@ -174,7 +200,7 @@ module.exports = {
       const lines = [
         `**Agent :** ${targetUser.name}`,
         `**Du :** ${formatDiscordTimestamp(debut, "F")}`,
-        `**Au :** ${formatDiscordTimestamp(fin, "F")}`,
+        `**Au :** ${isIndetermine ? "⚠️ **Indéterminé** (utilise \`/absence cancel\` pour annuler)" : formatDiscordTimestamp(fin, "F")}`,
         `**Raison :** ${raison}`,
         "",
         targetDiscordUser ? "🔒 Son compte sera bloqué pendant cette période." : "🔒 Ton compte sera bloqué pendant cette période.",
@@ -214,44 +240,76 @@ module.exports = {
       }
 
       const now = new Date();
-      const active = await prisma.absence.findFirst({
+      const cancellable = await prisma.absence.findMany({
         where: {
           userId: targetUser.id,
           cancelled: false,
-          startDate: { lte: now },
-          endDate: { gte: now },
+          OR: [
+            { endDate: null },
+            { endDate: { gte: now } },
+            { AND: [{ endDate: { lt: now } }, { isActive: true }] },
+          ],
         },
+        orderBy: { startDate: "asc" },
       });
 
-      if (!active) {
+      if (cancellable.length === 0) {
         return interaction.reply({
-          embeds: [errorEmbed(targetDiscordUser ? `${targetUser.name} n'a pas d'absence active.` : "Tu n'as pas d'absence active.")],
+          embeds: [errorEmbed(targetDiscordUser ? `${targetUser.name} n'a pas d'absence à annuler.` : "Tu n'as pas d'absence à annuler.")],
           ephemeral: true,
         });
       }
 
-      await prisma.absence.update({
-        where: { id: active.id },
-        data: { cancelled: true, isActive: false },
-      });
-
-      const lines = [targetDiscordUser ? `L'absence de **${targetUser.name}** a été annulée.` : "Ton absence a été annulée avec succès."];
-
-      if (active.removedRoleId && active.removedRoleId !== "NONE" && targetMember) {
-        try {
-          const role = interaction.guild.roles.cache.get(active.removedRoleId);
-          if (role) {
-            await targetMember.roles.add(active.removedRoleId);
-            lines.push(`🎭 Rôle **${role.name}** remis.`);
-          }
-        } catch (err) {
-          console.error("Erreur lors de la remise du rôle d'absence:", err);
-          lines.push("⚠️ Impossible de remettre le rôle automatiquement. Contacte un admin.");
-        }
+      if (cancellable.length === 1) {
+        return await cancelAbsence(interaction, prisma, cancellable[0], targetUser, targetMember, targetDiscordUser);
       }
 
-      await interaction.reply({
-        embeds: [successEmbed("Absence annulée", lines.join("\n"))],
+      const options = cancellable.map((a, i) => {
+        const debut = formatDiscordTimestamp(a.startDate, "d");
+        const fin = a.endDate ? formatDiscordTimestamp(a.endDate, "d") : "Indéterminé";
+        return {
+          label: `${debut} → ${fin}`,
+          description: a.reason || "Sans raison",
+          value: a.id,
+        };
+      });
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`absence_cancel_select:${targetUser.id}`)
+        .setPlaceholder("Sélectionne l'absence à annuler")
+        .addOptions(options);
+
+      const row = new ActionRowBuilder().addComponents(selectMenu);
+
+      const response = await interaction.reply({
+        content: `**${cancellable.length} absences trouvées** pour ${targetUser.name}. Sélectionne celle à annuler :`,
+        components: [row],
+        ephemeral: true,
+      });
+
+      const collector = response.createMessageComponentCollector({
+        filter: (i) => i.user.id === interaction.user.id,
+        time: 60_000,
+        max: 1,
+      });
+
+      collector.on("collect", async (i) => {
+        const selectedId = i.values[0];
+        const selected = cancellable.find((a) => a.id === selectedId);
+        if (!selected) {
+          return i.reply({ embeds: [errorEmbed("Absence introuvable.")], ephemeral: true });
+        }
+        await i.deferUpdate();
+        await cancelAbsence(i, prisma, selected, targetUser, targetMember, targetDiscordUser, true);
+      });
+
+      collector.on("end", (collected) => {
+        if (collected.size === 0) {
+          interaction.editReply({
+            content: "⏰ Annulation annulée — aucun sélection dans le temps imparti.",
+            components: [],
+          });
+        }
       });
     } else if (sub === "list") {
       const targetMember = interaction.options.getUser("membre");
@@ -286,12 +344,13 @@ module.exports = {
         .map((a) => {
           const status = a.cancelled
             ? "❌ Annulée"
-            : a.startDate <= now && a.endDate >= now
+            : a.startDate <= now && (a.endDate === null || a.endDate >= now)
             ? "🟢 Active"
-            : a.endDate < now
+            : a.endDate !== null && a.endDate < now
             ? "✅ Terminée"
             : "⏳ À venir";
-          return `${status} | ${formatDiscordTimestamp(a.startDate, "d")} → ${formatDiscordTimestamp(a.endDate, "d")} | ${a.reason || "N/A"}`;
+          const fin = a.endDate ? formatDiscordTimestamp(a.endDate, "d") : "Indéterminé";
+          return `${status} | ${formatDiscordTimestamp(a.startDate, "d")} → ${fin} | ${a.reason || "N/A"}`;
         })
         .join("\n");
 
@@ -302,6 +361,44 @@ module.exports = {
     }
   },
 };
+
+async function cancelAbsence(interaction, prisma, active, targetUser, targetMember, targetDiscordUser, isEdit = false) {
+  await prisma.absence.update({
+    where: { id: active.id },
+    data: { cancelled: true, isActive: false },
+  });
+
+  const fin = active.endDate ? formatDiscordTimestamp(active.endDate, "d") : "Indéterminé";
+  const lines = [
+    targetDiscordUser
+      ? `L'absence de **${targetUser.name}** a été annulée.`
+      : "Ton absence a été annulée avec succès.",
+    `📅 ${formatDiscordTimestamp(active.startDate, "d")} → ${fin}`,
+  ];
+
+  if (active.removedRoleId && active.removedRoleId !== "NONE" && targetMember) {
+    try {
+      const role = interaction.guild.roles.cache.get(active.removedRoleId);
+      if (role) {
+        await targetMember.roles.add(active.removedRoleId);
+        lines.push(`🎭 Rôle **${role.name}** remis.`);
+      }
+    } catch (err) {
+      console.error("Erreur lors de la remise du rôle d'absence:", err);
+      lines.push("⚠️ Impossible de remettre le rôle automatiquement. Contacte un admin.");
+    }
+  }
+
+  const payload = {
+    embeds: [successEmbed("Absence annulée", lines.join("\n"))],
+    components: [],
+  };
+
+  if (isEdit) {
+    return interaction.editReply(payload);
+  }
+  return interaction.reply(payload);
+}
 
 function parseDate(str) {
   const match = str.match(

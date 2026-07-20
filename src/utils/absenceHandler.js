@@ -10,7 +10,10 @@ async function getStartingAbsences() {
       cancelled: false,
       removedRoleId: null,
       startDate: { lte: now },
-      endDate: { gte: now },
+      OR: [
+        { endDate: { gte: now } },
+        { endDate: null },
+      ],
     },
     include: { user: { select: { id: true, discordId: true, name: true } } },
   });

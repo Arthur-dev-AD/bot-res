@@ -39,7 +39,10 @@ async function isUserAbsent(userId) {
       userId,
       cancelled: false,
       startDate: { lte: now },
-      endDate: { gte: now },
+      OR: [
+        { endDate: { gte: now } },
+        { endDate: null },
+      ],
     },
   });
   return !!absence;
